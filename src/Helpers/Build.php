@@ -2,7 +2,7 @@
     /*
         The MIT License (MIT)
 
-        Copyright (c) 2014 Julian Xhokaxhiu
+        Copyright (c) 2016 Julian Xhokaxhiu
 
         Permission is hereby granted, free of charge, to any person obtaining a copy of
         this software and associated documentation files (the "Software"), to deal in
@@ -54,11 +54,11 @@
                     1 => [CM VERSION] (ex. 10.1.x, 10.2, 11, etc.)
                     2 => [DATE OF BUILD] (ex. 20140130)
                     3 => [CHANNEL OF THE BUILD] (ex. RC, RC2, NIGHTLY, etc.)
-                    4 => [MODEL] (ex. i9100, i9300, etc.)
-                    5 => [EXTENSION] (ex. zip, txt, etc.)
+                    4 => [SNAPSHOT CODE] ( ex. ZNH0EAO2O0, etc. )
+                    5 => [MODEL] (ex. i9100, i9300, etc.)
                 )
             */
-            preg_match_all( '/cm-([0-9\.]+)-(\d+)?-([\w+]+)?-([\w+]+)\.([\w+]+)/', $fileName, $tokens );
+            preg_match_all( '/cm-([0-9\.]+)-(\d+)?-([\w+]+)?([-A-Za-z0-9]+)?-([\w+]+)/', $fileName, $tokens );
             $tokens = $this->removeTrailingDashes( $tokens );
 
             $this->filePath = $physicalPath . '/' . $fileName;
@@ -67,12 +67,10 @@
             $this->url = $this->_getUrl( '', Flight::cfg()->get('buildsPath') );
             $this->changelogUrl = $this->_getChangelogUrl();
             $this->timestamp = filemtime( $this->filePath );
-            if ( $tokens[5] == 'zip' ) {
-                $this->buildProp = explode( "\n", file_get_contents('zip://'.$this->filePath.'#system/build.prop') );
-                $this->incremental = $this->getBuildPropValue( 'ro.build.version.incremental' );
-                $this->apiLevel = $this->getBuildPropValue( 'ro.build.version.sdk' );
-                $this->model = $this->getBuildPropValue( 'ro.cm.device' );
-            }
+            $this->buildProp = explode( "\n", file_get_contents('zip://'.$this->filePath.'#system/build.prop') );
+            $this->incremental = $this->getBuildPropValue( 'ro.build.version.incremental' );
+            $this->apiLevel = $this->getBuildPropValue( 'ro.build.version.sdk' );
+            $this->model = $this->getBuildPropValue( 'ro.cm.device' );
     	}
 
         /**
@@ -212,7 +210,7 @@
          */
         private function removeTrailingDashes($token){
             foreach ( $token as $key => $value ) {
-                $token[$key] = rtrim( $value[0], '-' );
+                $token[$key] = trim( $value[0], '-' );
             }
             return $token;
         }
@@ -250,7 +248,12 @@
          * @return string The changelog URL
          */
         private function _getChangelogUrl(){
-            return str_replace('.zip', '.txt', $this->url);
+            $ret = str_replace('.zip', '.txt', $this->url);
+
+            if ( file_exists( str_replace('.zip', '.html', $this->filePath) ) )
+              $ret = str_replace('.zip', '.html', $this->url);
+
+            return $ret;
         }
 
         /**
