@@ -28,6 +28,8 @@
     use \Flight;
 
     class CmOta {
+        private $builds = NULL;
+
         /**
          * Constructor of the CmOta class.
          * @param array $options Various options that can be configured
@@ -37,19 +39,6 @@
             $this->initConfig();
             $this->initRouting();
             $this->initBuilds();
-        }
-
-        /**
-         * Enable memcached feature
-         * @return class Return always itself, so it can be chained within calls
-         */
-        public function enableMemcached() {
-            Flight::register( 'mc', 'Memcached', array(), function( $mc ) {
-                $mc->addServer( Flight::cfg()->get( 'memcached.host' ) , Flight::cfg()->get( 'memcached.port' ) );
-                Flight::cfg()->set( 'memcached.enabled', true );
-            });
-
-            return $this;
         }
 
         /**
@@ -115,6 +104,29 @@
                 }
 
                 Flight::json($ret);
+            });
+
+            // LineageOS new API
+            Flight::route('/api/v1/@deviceType(/@romType(/@incrementalVersion))', function ( $deviceType, $romType, $incrementalVersion ){
+              Flight::builds()->setPostData(
+                array(
+                  'params' => array(
+                    'device' => $deviceType,
+                    'channels' => array(
+                      $romType,
+                    ),
+                    'source_incremental' => $incrementalVersion,
+                  ),
+                )
+              );
+
+              $ret = array(
+                  'id' => null,
+                  'response' => Flight::builds()->get(),
+                  'error' => null
+              );
+
+              Flight::json($ret);
             });
         }
 

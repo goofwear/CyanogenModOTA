@@ -58,6 +58,7 @@
 
             foreach ( $this->builds as $build ) {
                 array_push( $ret, array(
+                    // CyanogenMod
                     'incremental' => $build->getIncremental(),
                     'api_level' => $build->getApiLevel(),
                     'url' => $build->getUrl(),
@@ -65,12 +66,27 @@
                     'md5sum' => $build->getMD5(),
                     'changes' => $build->getChangelogUrl(),
                     'channel' => $build->getChannel(),
-                    'filename' => $build->getFilename()
+                    'filename' => $build->getFilename(),
+                    // LineageOS
+                    'romtype' => $build->getChannel(),
+                    'datetime' => $build->getTimestamp(),
+                    'version' => $build->getVersion(),
                 ));
             }
 
             return $ret;
     	}
+
+        /**
+         * Set a custom set of POST data. Useful to hack the flow in case the data doesn't come within the body of the HTTP request
+         * @param array An array structured as POST data
+         * @return void
+         */
+        public function setPostData( $customData ){
+            $this->postData = $customData;
+            $this->builds = array();
+            $this->getBuilds();
+        }
 
         /**
          * Return a valid response of the delta build (if available) based on the current request
@@ -108,35 +124,38 @@
     	private function getBuilds() {
             // Get physical paths of where the files resides
             $path = Flight::cfg()->get('realBasePath') . '/builds/full';
-            // Get the file list and parse it
-    		$files = preg_grep( '/^([^.Thumbs])/', scandir( $path ) );
-            if ( count( $files ) > 0  ) {
-                foreach ( $files as $file ) {
-                    $extension = pathinfo($file, PATHINFO_EXTENSION);
+            // Get subdirs
+            $dirs = glob( $path . '/*' , GLOB_ONLYDIR );
+            array_push( $dirs, $path );
+            foreach ( $dirs as $dir )  {
+                // Get the file list and parse it
+                $files = preg_grep( '/^([^.Thumbs])/', scandir( $dir ) );
+                if ( count( $files ) > 0  ) {
+                    foreach ( $files as $file ) {
+                        $extension = pathinfo($file, PATHINFO_EXTENSION);
 
-                    if ( $extension == 'zip' ) {
-                        // Try to find the build using memcached
-                        if ( Flight::cfg()->get( 'memcached.enabled') ) {
-                            $build = Flight::mc()->get( $file );
+                        if ( $extension == 'zip' ) {
+                            $build = null;
 
-                            // If not found there, we have to find it with the old fashion method...
-                            if ( !$build && Flight::mc()->getResultCode() == Memcached::RES_NOTFOUND ) {
-                                $build = new Build( $file, $path);
-                                // ...and then save it for the next lookup
-                                Flight::mc()->set( $file, serialize($build), MEMCACHE_COMPRESSED );
-                            // If we have found it, just unserialize it and continue
-                            } else {
-                                $build = unserialize( $build );
+                            // If APC is enabled
+                            if( extension_loaded('apcu') && ini_get('apc.enabled') ) {
+                                $build = apcu_fetch( $file );
+
+                                // If not found there, we have to find it with the old fashion method...
+                                if ( $build === FALSE ) {
+                                    $build = new Build( $file, $dir );
+                                    // ...and then save it for 72h until it expires again
+                                    apcu_store( $file, $build, 72*60*60 );
+                                }
+                            } else
+                                $build = new Build( $file, $dir );
+
+                            if ( $build->isValid( $this->postData['params'] ) ) {
+                                array_push( $this->builds , $build );
                             }
-                        } else
-                            $build = new Build( $file, $path);
-
-                        if ( $build->isValid( $this->postData['params'] ) ) {
-                            array_push( $this->builds , $build );
                         }
                     }
                 }
             }
     	}
-
     }

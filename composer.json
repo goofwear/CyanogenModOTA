@@ -1,16 +1,17 @@
 {
-    "name": "julianxhokaxhiu/cyanogenmod-ota",
-    "description": "A simple OTA REST Server for CyanogenMod OTA Updater System Application",
-    "version": "2.0.5",
+    "name": "julianxhokaxhiu/lineage-ota",
+    "description": "A simple OTA REST Server for LineageOS OTA Updater System Application",
+    "version": "2.3.1",
     "type": "project",
     "keywords": [
     	"android",
     	"cyanogenmod",
+      "lineageos",
     	"ota",
     	"rest",
     	"php"
     ],
-    "homepage": "https://github.com/julianxhokaxhiu/CyanogenModOTA",
+    "homepage": "https://github.com/julianxhokaxhiu/LineageOTA",
     "license": "MIT",
     "authors": [
         {
@@ -39,11 +40,18 @@
     ],
     "require": {
     	"mikecao/flight": "1.*",
-        "julianxhokaxhiu/DotNotation": "dev-master"
+        "julianxhokaxhiu/DotNotation": "dev-master",
+        "ext-zip": "*"
     },
     "autoload": {
     	"psr-4": {
     		"JX\\CmOta\\": "src/"
     	}
+    },
+    "replace": {
+        "julianxhokaxhiu/cyanogenmod-ota":"2.*"
+    },
+    "suggest": {
+        "ext-zip": "This extension is usually enabled, if not make sure it is. LineageOTA requires it to run."
     }
 }

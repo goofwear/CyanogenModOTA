@@ -26,10 +26,12 @@
 
     use \JX\CmOta\CmOta;
 
+    if( isset($_SERVER['HTTPS'] ) )
+        $protocol = 'https://';
+    else
+        $protocol = 'http://';
+
     $app = new CmOta();
     $app
-    ->setConfig( 'basePath', 'http://'.$_SERVER['HTTP_HOST'] )
-    ->setConfig( 'memcached.host', 'localhost' )
-    ->setConfig( 'memcached.port', 11211 )
-    ->enableMemcached()
+    ->setConfig( 'basePath', $protocol.$_SERVER['HTTP_HOST'].dirname($_SERVER['SCRIPT_NAME']) )
     ->run();

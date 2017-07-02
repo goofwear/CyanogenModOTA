@@ -51,27 +51,35 @@
 				$tokens Schema:
 
                 array(
-                    1 => [CM VERSION] (ex. 10.1.x, 10.2, 11, etc.)
-                    2 => [DATE OF BUILD] (ex. 20140130)
-                    3 => [CHANNEL OF THE BUILD] (ex. RC, RC2, NIGHTLY, etc.)
-                    4 => [SNAPSHOT CODE] ( ex. ZNH0EAO2O0, etc. )
-                    5 => [MODEL] (ex. i9100, i9300, etc.)
+                    1 => [TYPE] (ex. cm, lineage, etc.)
+                    2 => [VERSION] (ex. 10.1.x, 10.2, 11, etc.)
+                    3 => [DATE OF BUILD] (ex. 20140130)
+                    4 => [CHANNEL OF THE BUILD] (ex. RC, RC2, NIGHTLY, etc.)
+                    5 => [SNAPSHOT CODE] ( ex. ZNH0EAO2O0, etc. )
+                    6 => [MODEL] (ex. i9100, i9300, etc.)
                 )
             */
-            preg_match_all( '/cm-([0-9\.]+)-(\d+)?-([\w+]+)?([-A-Za-z0-9]+)?-([\w+]+)/', $fileName, $tokens );
+            preg_match_all( '/(cm|lineage)-([0-9\.]+)-(\d+)?-([\w+]+)?([-A-Za-z0-9]+)?-([\w+]+)/', $fileName, $tokens );
             $tokens = $this->removeTrailingDashes( $tokens );
 
             $this->filePath = $physicalPath . '/' . $fileName;
-            $this->channel = $this->_getChannel( str_replace( range( 0 , 9 ), '', $tokens[3] ) );
+            $this->channel = $this->_getChannel( str_replace( range( 0 , 9 ), '', $tokens[4] ), $tokens[1], $tokens[2] );
             $this->filename = $fileName;
-            $this->url = $this->_getUrl( '', Flight::cfg()->get('buildsPath') );
-            $this->changelogUrl = $this->_getChangelogUrl();
-            $this->timestamp = filemtime( $this->filePath );
-            $this->buildProp = explode( "\n", file_get_contents('zip://'.$this->filePath.'#system/build.prop') );
+            $this->buildProp = explode( "\n", @file_get_contents('zip://'.$this->filePath.'#system/build.prop') );
+            $this->timestamp = $this->getBuildPropValue( 'ro.build.date.utc' );
             $this->incremental = $this->getBuildPropValue( 'ro.build.version.incremental' );
             $this->apiLevel = $this->getBuildPropValue( 'ro.build.version.sdk' );
             $this->model = $this->getBuildPropValue( 'ro.cm.device' );
-    	}
+            $this->version = $tokens[2];
+
+            $position = strrpos( $physicalPath, '/builds/full' );
+            if ( $position === FALSE )
+                $this->url = $this->_getUrl( '', Flight::cfg()->get('buildsPath') );
+            else
+                $this->url = $this->_getUrl( '', Flight::cfg()->get('basePath') . substr( $physicalPath, $position ) );
+
+            $this->changelogUrl = $this->_getChangelogUrl();
+        }
 
         /**
          * Check if the current build is valid within the current request
@@ -84,7 +92,6 @@
             if ( $params['device'] == $this->model ) {
                 if ( count($params['channels']) > 0 ) {
                     foreach ( $params['channels'] as $channel ) {
-                        var_dump($channel);
                         if ( strtolower($channel) == $this->channel ) $ret = true;
                     }
                 }
@@ -104,21 +111,15 @@
             $deltaFile = $this->incremental . '-' . $targetToken->incremental . '.zip';
             $deltaFilePath = Flight::cfg()->get('realBasePath') . '/builds/delta/' . $deltaFile;
 
-            if ( $this->commandExists('xdelta3') ) {
-
-                if ( !file_exists( $deltaFilePath ) ) {
-                    exec( 'xdelta3 -e -s ' . $this->filePath . ' ' . $targetToken->filePath . ' ' . $deltaFilePath );
-                }
-
-                $ret = array(
-                    'filename' => $deltaFile,
-                    'timestamp' => filemtime( $deltaFilePath ),
-                    'md5' => $this->getMD5( $deltaFilePath ),
-                    'url' => $this->_getUrl( $deltaFile, Flight::cfg()->get('deltasPath') ),
-                    'api_level' => $this->apiLevel,
-                    'incremental' => $targetToken->incremental
-                );
-            }
+            if ( file_exists( $deltaFilePath ) )
+              $ret = array(
+                'filename' => $deltaFile,
+                'timestamp' => filemtime( $deltaFilePath ),
+                'md5' => $this->getMD5( $deltaFilePath ),
+                'url' => $this->_getUrl( $deltaFile, Flight::cfg()->get('deltasPath') ),
+                'api_level' => $this->apiLevel,
+                'incremental' => $targetToken->incremental
+              );
 
             return $ret;
         }
@@ -201,6 +202,14 @@
         	return $this->filename;
         }
 
+        /**
+         * Get the version of the current build
+         * @return string the version value
+         */
+        public function getVersion() {
+            return $this->version;
+        }
+
     	/* Utility / Internal */
 
         /**
@@ -218,16 +227,18 @@
         /**
          * Get the current channel of the build based on the current token
          * @param string $token The channel obtained from build.prop
+         * @param string $type The ROM type from filename
+         * @param string $version The ROM version from filename
          * @return string The correct channel to be returned
          */
-        private function _getChannel($token){
+        private function _getChannel($token, $type, $version){
             $ret = 'stable';
 
             $token = strtolower( $token );
             if ( $token > '' ) {
                 $ret = $token;
-                if ( $token == 'experimental' ) $ret = 'snapshot';
-                if ( $token == 'unofficial' ) $ret = 'nightly';
+                if ( $token == 'experimental' && ( $type == 'cm' || version_compare ( $version, '14.1', '<' ) ) ) $ret = 'snapshot';
+                if ( $token == 'unofficial' && ( $type == 'cm' || version_compare ( $version, '14.1', '<' ) ) ) $ret = 'nightly';
             }
 
             return $ret;
@@ -239,6 +250,10 @@
          * @return string The absolute URL for the file to be downloaded
          */
         private function _getUrl($fileName = '', $basePath){
+            $prop = $this->getBuildPropValue( 'ro.build.ota.url' );
+            if ( !empty($prop) )
+                return $prop;
+
             if ( empty($fileName) ) $fileName = $this->filename;
             return $basePath . '/' . $fileName;
         }
@@ -248,10 +263,12 @@
          * @return string The changelog URL
          */
         private function _getChangelogUrl(){
-            $ret = str_replace('.zip', '.txt', $this->url);
-
-            if ( file_exists( str_replace('.zip', '.html', $this->filePath) ) )
-              $ret = str_replace('.zip', '.html', $this->url);
+            if ( file_exists( str_replace('.zip', '.txt', $this->filePath) ) )
+                $ret = str_replace('.zip', '.txt', $this->url);
+            elseif ( file_exists( str_replace('.zip', '.html', $this->filePath) ) )
+                $ret = str_replace('.zip', '.html', $this->url);
+            else
+                $ret = '';
 
             return $ret;
         }
